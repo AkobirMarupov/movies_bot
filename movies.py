@@ -7,28 +7,23 @@ import aiosqlite
 TOKEN = "7816332278:AAFPJXE17yrRShRhplZqDeCI6EbEuXVAwCE"
 CHANNEL_ID = "@wan_plus"
 
-# Bot va dispatcher
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# Adminlar ro‘yxati
-ADMINS = [7009085528]  # O'zingizning Telegram ID'ingizni qo‘shing
+ADMINS = [7009085528]
 
-# **Obuna tekshirish funksiyasi**
 async def check_subscription(user_id):
     try:
         member = await bot.get_chat_member(CHANNEL_ID, user_id)
         return member.status in ["member", "administrator", "creator"]
     except:
-        return False  # Agar kanal mavjud bo‘lmasa yoki botda ruxsat bo‘lmasa
+        return False
 
-# **Botni ishga tushirishda bazani yaratish**
 async def setup_db():
     async with aiosqlite.connect("videos.db") as db:
         await db.execute("CREATE TABLE IF NOT EXISTS videos (code TEXT PRIMARY KEY, file_id TEXT)")
         await db.commit()
 
-# **/start buyrug‘i**
 @dp.message(Command("start"))
 async def start(message: types.Message):
     is_subscribed = await check_subscription(message.from_user.id)
@@ -41,12 +36,10 @@ async def start(message: types.Message):
         return
     await message.answer("🎬 Salom! Kino olish uchun kodni yuboring.")
 
-# **Video qo‘shish (adminlar uchun)**
 @dp.message(F.text)
 async def add_or_get_video(message: types.Message):
     code = message.text.strip()
 
-    # **Admin bo‘lsa va videoga javob bersa, uni bazaga qo‘shadi**
     if message.from_user.id in ADMINS and message.reply_to_message and message.reply_to_message.video:
         file_id = message.reply_to_message.video.file_id
         async with aiosqlite.connect("videos.db") as db:
@@ -58,7 +51,6 @@ async def add_or_get_video(message: types.Message):
                 await message.answer("⚠️ Bu kod allaqachon mavjud!")
         return
 
-    # **Oddiy foydalanuvchilar kod yuborsa, video topish**
     is_subscribed = await check_subscription(message.from_user.id)
     if not is_subscribed:
         await message.answer(
@@ -77,7 +69,6 @@ async def add_or_get_video(message: types.Message):
     else:
         await message.answer("❌ Bunday kodga mos kino topilmadi!")
 
-# **Botni ishga tushirish**
 async def main():
     logging.basicConfig(level=logging.INFO)
     await setup_db()  # Bazani tayyorlash

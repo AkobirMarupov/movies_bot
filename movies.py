@@ -1,7 +1,9 @@
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command
-import logging
+from fastapi import FastAPI
 import asyncio
+import logging
+import uvicorn
+from aiogram import Bot, Dispatcher, types
+from aiogram.filters import Command
 import aiosqlite
 
 TOKEN = "7816332278:AAFPJXE17yrRShRhplZqDeCI6EbEuXVAwCE"
@@ -9,6 +11,7 @@ CHANNEL_ID = "@wan_plus"
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
+app = FastAPI()  # FastAPI serverini yaratamiz
 
 ADMINS = [7009085528]
 
@@ -36,7 +39,7 @@ async def start(message: types.Message):
         return
     await message.answer("🎬 Salom! Kino olish uchun kodni yuboring.")
 
-@dp.message(F.text)
+@dp.message(types.Message)
 async def add_or_get_video(message: types.Message):
     code = message.text.strip()
 
@@ -69,10 +72,18 @@ async def add_or_get_video(message: types.Message):
     else:
         await message.answer("❌ Bunday kodga mos kino topilmadi!")
 
-async def main():
+async def bot_runner():
     logging.basicConfig(level=logging.INFO)
     await setup_db()  # Bazani tayyorlash
     await dp.start_polling(bot)
 
+# FastAPI endpoint (bu yerga UptimeRobot har 5 daqiqada so‘rov yuboradi)
+@app.get("/")
+async def root():
+    return {"message": "Bot is running!"}
+
+# Botni va serverni ishga tushirish
 if __name__ == "__main__":
-    asyncio.run(main())
+    loop = asyncio.get_event_loop()
+    loop.create_task(bot_runner())  # Botni fon rejimida ishga tushiramiz
+    uvicorn.run(app, host="0.0.0.0", port=8000)  # FastAPI serverini ishga tushiramiz

@@ -1,65 +1,130 @@
-from fastapi import FastAPI
 import asyncio
 import logging
-import uvicorn
+import aiosqlite
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-import aiosqlite
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.enums import ParseMode
+from aiogram.client.default import DefaultBotProperties
+from aiogram.exceptions import TelegramBadRequest
 
-TOKEN = "7816332278:AAFPJXE17yrRShRhplZqDeCI6EbEuXVAwCE"
-CHANNEL_ID = "@wan_plus"
-
-bot = Bot(token=TOKEN)
-dp = Dispatcher()
-app = FastAPI()  # FastAPI serverini yaratamiz
-
+# Bot tokeni va kanallar ID'lari
+TOKEN = "7816332278:AAFPJXE17yrRShRhplZqDeCI6EbEuXVAwCE"  # <--- o'z tokeningizni kiriting
+CHANNEL_IDS = [
+    "@wan_plus",  # 1-kanal
+    # "@channel2_id",  # 2-kanal
+    # "@channel3_id",  # 3-kanal
+    # "@channel4_id",  # 4-kanal
+    # "@channel5_id",  # 5-kanal
+    # "@channel6_id",  # 6-kanal
+    # "@channel7_id",  # 7-kanal
+]
 ADMINS = [7009085528]
 
-async def check_subscription(user_id):
-    try:
-        member = await bot.get_chat_member(CHANNEL_ID, user_id)
-        return member.status in ["member", "administrator", "creator"]
-    except:
-        return False
+# Botni yaratish (HTML parse_mode bilan)
+bot = Bot(
+    token=TOKEN,
+    default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+)
+dp = Dispatcher()
 
+# Baza tayyorlash
 async def setup_db():
     async with aiosqlite.connect("videos.db") as db:
-        await db.execute("CREATE TABLE IF NOT EXISTS videos (code TEXT PRIMARY KEY, file_id TEXT)")
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS videos (
+                code TEXT PRIMARY KEY,
+                file_id TEXT
+            )
+        """)
         await db.commit()
 
+# Obuna tekshiruvi (bir nechta kanal uchun)
+async def check_subscription(user_id):
+    for channel_id in CHANNEL_IDS:
+        try:
+            member = await bot.get_chat_member(chat_id=channel_id, user_id=user_id)
+            if member.status in ["member", "administrator", "creator"]:
+                return True
+        except TelegramBadRequest:
+            continue  # Agar kanal topilmasa yoki xatolik bo'lsa, keyingi kanalni tekshiramiz
+    return False
+
+# Inline tugma uchun keyboard
+def get_check_subscription_keyboard():
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Tekshirish ✅", callback_data="check_subscription")]
+    ])
+    return keyboard
+
+# /start buyrug'i
 @dp.message(Command("start"))
-async def start(message: types.Message):
+async def cmd_start(message: types.Message):
     is_subscribed = await check_subscription(message.from_user.id)
     if not is_subscribed:
+        channels_list = "\n".join([f"➡️ {i+1} - {channel}" for i, channel in enumerate(CHANNEL_IDS)])
         await message.answer(
-            "📢 Botdan foydalanish uchun kanalga obuna bo‘ling:\n"
-            f"➡️ {CHANNEL_ID}\n\n"
-            "✅ Obuna bo‘lgach, /start buyrug‘ini qayta kiriting."
+            f"📢 Botdan foydalanish uchun quyidagi kanallardan biriga obuna bo'ling:\n{channels_list}\n\n"
+            "✅ Obuna bo'lgach, <b>Tekshirish</b> tugmasini bosing yoki /start ni qayta yuboring.",
+            reply_markup=get_check_subscription_keyboard()
         )
         return
-    await message.answer("🎬 Salom! Kino olish uchun kodni yuboring.")
+    await message.answer("🎬 Tabriklaymiz botdan foydalanishingiz mumkin")
 
-@dp.message(types.Message)
-async def add_or_get_video(message: types.Message):
+# Obuna tekshiruvi callback
+@dp.callback_query(lambda c: c.data == "check_subscription")
+async def process_check_subscription(callback_query: types.CallbackQuery):
+    await bot.answer_callback_query(callback_query.id)
+    is_subscribed = await check_subscription(callback_query.from_user.id)
+    if is_subscribed:
+        await bot.send_message(
+            callback_query.from_user.id,
+            "✅ Obuna tasdiqlandi! Endi kodni yuboring va video faylni oling.\nYordam: /help"
+        )
+    else:
+        channels_list = "\n".join([f"➡️ {i+1} - {channel}" for i, channel in enumerate(CHANNEL_IDS)])
+        await bot.send_message(
+            callback_query.from_user.id,
+            f"📢 Siz hali kanallarga obuna emassiz! Iltimos, quyidagi kanallardan biriga obuna bo'ling:\n{channels_list}\n\n"
+            "✅ Obuna bo'lgach, <b>Tekshirish</b> tugmasini bosing.",
+            reply_markup=get_check_subscription_keyboard()
+        )
+
+# /help buyrug'i
+@dp.message(Command("help"))
+async def cmd_help(message: types.Message):
+    await message.answer(
+        "🆘 <b>Yordam:</b>\n"
+        "📥 Kodni yuboring — agar mavjud bo'lsa, video fayl yuboriladi.\n"
+        "👮 Admin bo'lsangiz, reply orqali video faylga kod yozib yuboring.\n"
+        "🔐 Foydalanish uchun kamida bitta kanalga obuna bo'lish shart."
+    )
+
+# Kodni qayta ishlash (video qidirish yoki qo'shish)
+@dp.message()
+async def handle_message(message: types.Message):
     code = message.text.strip()
 
+    # Admin video qo'shmoqda
     if message.from_user.id in ADMINS and message.reply_to_message and message.reply_to_message.video:
         file_id = message.reply_to_message.video.file_id
         async with aiosqlite.connect("videos.db") as db:
             try:
                 await db.execute("INSERT INTO videos (code, file_id) VALUES (?, ?)", (code, file_id))
                 await db.commit()
-                await message.answer(f"✅ Kino qo‘shildi! Kod: {code}")
+                await message.answer(f"✅ Video saqlandi! Kod: <code>{code}</code>")
             except aiosqlite.IntegrityError:
                 await message.answer("⚠️ Bu kod allaqachon mavjud!")
         return
 
+    # Oddiy foydalanuvchi — kod orqali qidirish
     is_subscribed = await check_subscription(message.from_user.id)
     if not is_subscribed:
+        channels_list = "\n".join([f"➡️ {i+1} - {channel}" for i, channel in enumerate(CHANNEL_IDS)])
         await message.answer(
-            "📢 Botdan foydalanish uchun kanalga obuna bo‘ling:\n"
-            f"➡️ {CHANNEL_ID}\n\n"
-            "✅ Obuna bo‘lgach, /start buyrug‘ini qayta kiriting."
+            f"📢 Botdan foydalanish uchun quyidagi kanallardan biriga obuna bo'ling:\n{channels_list}\n\n"
+            "✅ Obuna bo'lgach, <b>Tekshirish</b> tugmasini bosing yoki /start ni qayta yuboring.",
+            reply_markup=get_check_subscription_keyboard()
         )
         return
 
@@ -70,20 +135,13 @@ async def add_or_get_video(message: types.Message):
     if result:
         await message.answer_video(result[0])
     else:
-        await message.answer("❌ Bunday kodga mos kino topilmadi!")
+        await message.answer("❌ Bunday kodga mos video topilmadi.")
 
-async def bot_runner():
+# Botni ishga tushirish
+async def main():
     logging.basicConfig(level=logging.INFO)
-    await setup_db()  # Bazani tayyorlash
+    await setup_db()
     await dp.start_polling(bot)
 
-# FastAPI endpoint (bu yerga UptimeRobot har 5 daqiqada so‘rov yuboradi)
-@app.get("/")
-async def root():
-    return {"message": "Bot is running!"}
-
-# Botni va serverni ishga tushirish
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.create_task(bot_runner())  # Botni fon rejimida ishga tushiramiz
-    uvicorn.run(app, host="0.0.0.0", port=8000)  # FastAPI serverini ishga tushiramiz
+    asyncio.run(main())

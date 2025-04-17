@@ -9,9 +9,9 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.exceptions import TelegramBadRequest
 
 # Bot tokeni va kanallar ID'lari
-TOKEN = "7816332278:AAFPJXE17yrRShRhplZqDeCI6EbEuXVAwCE"  # <--- o'z tokeningizni kiriting
+TOKEN = "7816332278:AAGAVGH8OLJ7b74hsSlYMq2qrs49EcDMYYw"  # <--- o'z tokeningizni kiriting
 CHANNEL_IDS = [
-    "@wan_plus",  # 1-kanal
+    "@marupov_akobir",  # 1-kanal
     # "@channel2_id",  # 2-kanal
     # "@channel3_id",  # 3-kanal
     # "@channel4_id",  # 4-kanal

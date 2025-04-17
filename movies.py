@@ -9,11 +9,15 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.exceptions import TelegramBadRequest
 from aiohttp import web
 import os
+from dotenv import load_dotenv
 
-# Bot tokeni va kanallar ID'lari
-TOKEN = os.getenv("7816332278:AAGAVGH8OLJ7b74hsSlYMq2qrs49EcDMYYw")  # Render’da BOT_TOKEN o‘rnatilgan bo‘lishi kerak
+load_dotenv()
+
+
+TOKEN = os.getenv("TOKEN")
 CHANNEL_IDS = ["@wan_plus"]
 ADMINS = [7009085528]
+
 
 
 bot = Bot(

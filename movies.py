@@ -2,6 +2,8 @@ import asyncio
 import logging
 import os
 import aiosqlite
+from fastapi import FastAPI
+import uvicorn
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -16,9 +18,18 @@ TOKEN = os.getenv("TOKEN")
 CHANNEL_IDS = ["@marupov_akobir"]
 ADMINS = [7009085528]
 
+# Bot va Dispatcher
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
+# FastAPI app
+app = FastAPI()
+
+@app.get("/")
+async def root():
+    return {"message": "Bot is alive!"}
+
+# Database setup
 async def setup_db():
     async with aiosqlite.connect("videos.db") as db:
         await db.execute("""
@@ -30,6 +41,7 @@ async def setup_db():
         """)
         await db.commit()
 
+# Obuna tekshirish
 async def check_subscription(user_id):
     for channel_id in CHANNEL_IDS:
         try:
@@ -40,11 +52,13 @@ async def check_subscription(user_id):
             continue
     return False
 
+# Obuna tugmasi
 def get_check_subscription_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Tekshirish ✅", callback_data="check_subscription")]
     ])
 
+# /start komandasi
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     is_subscribed = await check_subscription(message.from_user.id)
@@ -58,6 +72,7 @@ async def cmd_start(message: types.Message):
         return
     await message.answer("🎥 Tabriklaymiz! Botdan foydalanishingiz mumkin.")
 
+# Tekshirish tugmasi callback
 @dp.callback_query(lambda c: c.data == "check_subscription")
 async def process_check_subscription(callback_query: types.CallbackQuery):
     await bot.answer_callback_query(callback_query.id)
@@ -76,6 +91,7 @@ async def process_check_subscription(callback_query: types.CallbackQuery):
             reply_markup=get_check_subscription_keyboard()
         )
 
+# /help komandasi
 @dp.message(Command("help"))
 async def cmd_help(message: types.Message):
     await message.answer(
@@ -86,6 +102,7 @@ async def cmd_help(message: types.Message):
         "🔐 Foydalanish uchun kamida bitta kanalga obuna bo'lish shart."
     )
 
+# Kod orqali video olish
 @dp.message()
 async def handle_message(message: types.Message):
     code = message.text.strip()
@@ -138,7 +155,16 @@ async def handle_message(message: types.Message):
     else:
         await message.answer("❌ Bunday kodga mos video topilmadi.")
 
-if __name__ == "__main__":
+# Bot va serverni ishga tushirish
+async def main():
     logging.basicConfig(level=logging.INFO)
-    asyncio.run(setup_db())
-    asyncio.run(dp.start_polling(bot))
+    await setup_db()
+    asyncio.create_task(dp.start_polling(bot))
+
+    # Run FastAPI server (Render uni 24/7 ushlab turadi)
+    config = uvicorn.Config(app=app, host="0.0.0.0", port=int(os.getenv("PORT", 10000)))
+    server = uvicorn.Server(config)
+    await server.serve()
+
+if __name__ == "__main__":
+    asyncio.run(main())
